@@ -1,8 +1,25 @@
-require("dotenv").config();
+const path = require("path");
+
+require("dotenv").config({
+  path: path.resolve(__dirname, ".env"),
+});
 
 const XLSX = require("xlsx");
 const { createClient } = require("@supabase/supabase-js");
-const path = require("path");
+const fs = require("fs");
+
+// Debug env loading
+console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
+console.log("SUPABASE_ANON_KEY =", process.env.SUPABASE_ANON_KEY);
+
+// Check env variables
+if (!process.env.SUPABASE_URL) {
+  throw new Error("Missing SUPABASE_URL in server/.env");
+}
+
+if (!process.env.SUPABASE_ANON_KEY) {
+  throw new Error("Missing SUPABASE_ANON_KEY in server/.env");
+}
 
 // Create Supabase client
 const supabase = createClient(
@@ -12,6 +29,11 @@ const supabase = createClient(
 
 // Excel file path
 const filePath = path.join(__dirname, "Project NOW.xlsx");
+
+// Check if file exists
+if (!fs.existsSync(filePath)) {
+  throw new Error(`Excel file not found: ${filePath}`);
+}
 
 // Read workbook
 const workbook = XLSX.readFile(filePath);
@@ -26,15 +48,6 @@ const rows = XLSX.utils.sheet_to_json(sheet);
 async function upload() {
   try {
     console.log("Uploading Excel data...");
-
-    // Check if env variables exist
-    if (!process.env.SUPABASE_URL) {
-      throw new Error("Missing SUPABASE_URL in .env");
-    }
-
-    if (!process.env.SUPABASE_ANON_KEY) {
-      throw new Error("Missing SUPABASE_ANON_KEY in .env");
-    }
 
     for (const row of rows) {
       const payload = {
