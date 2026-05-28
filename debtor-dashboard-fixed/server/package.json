@@ -1,0 +1,11 @@
+{
+  "name": "excel-importer",
+  "version": "1.0.0",
+  "main": "importExcel.js",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.52.0",
+    "dotenv": "^16.5.0",
+    "xlsx": "^0.18.5"
+  }
+}
