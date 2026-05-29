@@ -38,7 +38,7 @@ const STATIC = {
 };
 
 // ─── TRANSFORM: Supabase rows → dashboard metrics ────────────────────────────
-// Schema: id, name, balance, oldest_inv_days, owner, action
+// Works with schema: id, name, balance, oldest_inv_days, owner, action
 function transformDebtors(rows) {
   if (!rows || rows.length === 0) return null;
 
@@ -46,22 +46,22 @@ function transformDebtors(rows) {
   const totalOutstanding = positive.reduce((s, r) => s + r.balance, 0);
 
   // DSO — weighted average of oldest_inv_days by balance
-  const weightedDays = positive.reduce((s, r) => s + (r.oldest_inv_days || 0) * r.balance, 0);
+  const weightedDays = positive.reduce((s, r) => s + r.oldest_inv_days * r.balance, 0);
   const dso = totalOutstanding > 0 ? Math.round(weightedDays / totalOutstanding) : 0;
 
-  // Escalations — deurwaarder (case-insensitive)
+  // Escalations — any action containing "deurwaarder" (case-insensitive)
   const escalations = rows.filter(r =>
     (r.action || "").toLowerCase().includes("deurwaarder")
   ).length;
 
-  // Aging buckets derived from oldest_inv_days × balance
+  // Aging buckets — derived from oldest_inv_days × balance
   let b030 = 0, b3160 = 0, b6190 = 0, b90p = 0;
   positive.forEach(r => {
     const d = r.oldest_inv_days || 0;
-    if      (d <= 30)  b030  += r.balance;
-    else if (d <= 60)  b3160 += r.balance;
-    else if (d <= 90)  b6190 += r.balance;
-    else               b90p  += r.balance;
+    if      (d <= 30) b030  += r.balance;
+    else if (d <= 60) b3160 += r.balance;
+    else if (d <= 90) b6190 += r.balance;
+    else              b90p  += r.balance;
   });
   const bTotal = totalOutstanding || 1;
   const agingBuckets = [
@@ -71,14 +71,14 @@ function transformDebtors(rows) {
     { label: "90+ Days",   pct: +((b90p  / bTotal) * 100).toFixed(1), amount: b90p,  color: "#ef4444" },
   ];
 
-  // Action distribution
+  // Action item distribution
   let cntDeurwaarder = 0, cntEmail = 0, cntPayment = 0, cntOther = 0;
   rows.forEach(r => {
     const a = (r.action || "").toLowerCase();
-    if      (a.includes("deurwaarder"))                    cntDeurwaarder++;
-    else if (a.includes("email"))                          cntEmail++;
+    if      (a.includes("deurwaarder")) cntDeurwaarder++;
+    else if (a.includes("email"))       cntEmail++;
     else if (a.includes("payment") || a.includes("agreement")) cntPayment++;
-    else                                                   cntOther++;
+    else                                cntOther++;
   });
   const aTotal = rows.length || 1;
   const disputes = [
@@ -88,7 +88,7 @@ function transformDebtors(rows) {
     { name: "Follow-up / Other", value: Math.round((cntOther       / aTotal) * 100), color: "#f59e0b" },
   ];
 
-  // Owner workload — skip Unassigned / for checking
+  // Owner workload — sum of positive balances, skip Unassigned
   const ownerMap = {};
   positive.forEach(r => {
     const raw = r.owner || "";
@@ -102,21 +102,21 @@ function transformDebtors(rows) {
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 6);
 
-  // Top 20 by balance descending
+  // Top 20 customers sorted by balance descending
   const top20 = [...rows]
     .filter(r => (r.balance || 0) > 0)
     .sort((a, b) => b.balance - a.balance)
     .slice(0, 20)
     .map(r => ({
-      id:      String(r.id),
-      name:    r.name || "Unknown",
+      id:     String(r.id),
+      name:   r.name || "Unknown",
       balance: r.balance,
-      days:    r.oldest_inv_days || 0,
-      owner:   r.owner || "—",
-      action:  r.action || "—",
+      days:   r.oldest_inv_days || 0,
+      owner:  r.owner || "—",
+      action: r.action || "—",
     }));
 
-  return { dso, totalOutstanding, escalations, agingBuckets, disputes, ownerWorkload, customers: top20, totalRows: rows.length };
+  return { dso, totalOutstanding, escalations, agingBuckets, disputes, ownerWorkload, customers: top20 };
 }
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
@@ -211,6 +211,7 @@ function SectionTitle({ children, icon: Icon }) {
 
 // ─── DSO GAUGE ────────────────────────────────────────────────────────────────
 function DSOGauge({ value, target }) {
+  // Cap at 1200 days for gauge visual — DSO is 853 so cap at 1000 for scale
   const pct = Math.min(value / 1000, 1);
   const angle = -135 + pct * 270;
   const countVal = useCountUp(value);
@@ -378,19 +379,19 @@ function AgingBuckets({ data }) {
 
 // ─── CUSTOMER ROW ─────────────────────────────────────────────────────────────
 function CustomerRow({ customer, index }) {
+  const isHighRisk    = customer.days > 500 || customer.balance > 100000;
   const isDeurwaarder = (customer.action || "").toLowerCase().includes("deurwaarder");
   const isEmail       = (customer.action || "").toLowerCase().includes("email");
   const isPayment     = (customer.action || "").toLowerCase().includes("payment") ||
                         (customer.action || "").toLowerCase().includes("agreement");
-  const actionColor   = isDeurwaarder ? "bg-red-100 text-red-700"    :
-                        isEmail       ? "bg-blue-100 text-blue-700"  :
+  const actionColor   = isDeurwaarder ? "bg-red-100 text-red-700" :
+                        isEmail       ? "bg-blue-100 text-blue-700" :
                         isPayment     ? "bg-purple-100 text-purple-700" :
                                         "bg-slate-100 text-slate-600";
-  const actionIcon    = isDeurwaarder ? <Gavel size={9} />      :
-                        isEmail       ? <Mail size={9} />       :
-                        isPayment     ? <Handshake size={9} />  :
+  const actionIcon    = isDeurwaarder ? <Gavel size={9} /> :
+                        isEmail       ? <Mail size={9} /> :
+                        isPayment     ? <Handshake size={9} /> :
                                         <CheckCircle size={9} />;
-  const isHighRisk    = customer.days > 500 || customer.balance > 100000;
   return (
     <div className="flex items-center gap-3 p-2.5 rounded-xl border border-transparent
       hover:bg-blue-50/60 hover:border-blue-100 transition-all duration-200 cursor-pointer group">
@@ -402,7 +403,7 @@ function CustomerRow({ customer, index }) {
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-700 truncate max-w-[130px]">{customer.name}</span>
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0
-            ${customer.balance >= 100000 ? "bg-red-100 text-red-700"    :
+            ${customer.balance >= 100000 ? "bg-red-100 text-red-700" :
               customer.balance >= 20000  ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>
             {fmt(customer.balance)}
           </span>
@@ -569,7 +570,6 @@ export default function DebtorDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50/40 to-slate-100 font-sans p-4">
-      {/* Background blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-200/30 rounded-full blur-3xl" />
         <div className="absolute top-1/2 -right-40 w-80 h-80 bg-indigo-200/20 rounded-full blur-3xl" />
@@ -592,12 +592,10 @@ export default function DebtorDashboard() {
             </div>
             <div className="flex items-center gap-3 ml-10 flex-wrap">
               <p className="text-xs text-slate-400">
-                Last updated: {lastUpdated?.toLocaleTimeString()} · Supabase "debtors" · {data.totalRows} accounts
+                Last updated: {lastUpdated?.toLocaleTimeString()} · Supabase "debtors"
               </p>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border
-                ${isLive
-                  ? "bg-green-50 text-green-700 border-green-200"
-                  : "bg-orange-50 text-orange-600 border-orange-200"}`}>
+                ${isLive ? "bg-green-50 text-green-700 border-green-200" : "bg-orange-50 text-orange-600 border-orange-200"}`}>
                 {isLive ? <><Wifi size={10} /> Realtime Live</> : <><WifiOff size={10} /> Connecting…</>}
               </span>
               <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -619,7 +617,7 @@ export default function DebtorDashboard() {
           </div>
         </div>
 
-        {/* ── KPI Row ── */}
+        {/* ── KPIs ── */}
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-3">
             <Activity size={14} className="text-blue-600" />
@@ -646,18 +644,14 @@ export default function DebtorDashboard() {
           </div>
         </div>
 
-        {/* ── Middle Row ── */}
+        {/* ── Middle ── */}
         <div className="grid grid-cols-5 gap-4 mb-4">
           <GlassCard className="col-span-2 p-4">
             <SectionTitle icon={Users}>Top 20 Priority Tracker</SectionTitle>
-            <p className="text-xs font-semibold text-slate-600 mb-0.5">Outstanding Balance &amp; Days Overdue</p>
-            <p className="text-[10px] text-slate-400 mb-3">
-              Live from Supabase · {data.customers.length} shown · sorted by balance
-            </p>
+            <p className="text-xs font-semibold text-slate-600 mb-0.5">Outstanding Balance & Days Overdue</p>
+            <p className="text-[10px] text-slate-400 mb-3">Live from Supabase · {data.customers.length} shown · sorted by balance</p>
             <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-              {data.customers.map((c, i) => (
-                <CustomerRow key={c.id} customer={c} index={i} />
-              ))}
+              {data.customers.map((c, i) => <CustomerRow key={c.id} customer={c} index={i} />)}
             </div>
             <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
               <span className="text-[10px] text-slate-400">Top 20 total</span>
@@ -673,14 +667,12 @@ export default function DebtorDashboard() {
           </GlassCard>
         </div>
 
-        {/* ── Bottom Row ── */}
+        {/* ── Bottom ── */}
         <div className="grid grid-cols-3 gap-4">
           <GlassCard className="p-4">
             <SectionTitle icon={PieChart}>Action Item Distribution</SectionTitle>
             <DisputeDonut data={data.disputes} />
-            <p className="text-xs text-slate-500 mt-3">
-              Categorises recovery actions across all {data.totalRows} debtors.
-            </p>
+            <p className="text-xs text-slate-500 mt-3">Categorises recovery actions across all {data.customers.length} debtors.</p>
           </GlassCard>
 
           <GlassCard className="p-4">
@@ -724,7 +716,7 @@ export default function DebtorDashboard() {
                   <AlertTriangle size={12} className="text-orange-500" />
                   <span className="text-xs font-bold text-slate-700">Total Debtors</span>
                 </div>
-                <span className="text-xl font-black text-orange-600">{data.totalRows}</span>
+                <span className="text-xl font-black text-orange-600">{data.customers.length}</span>
                 <div className="text-[10px] text-slate-500">tracked accounts</div>
               </div>
             </div>
@@ -739,7 +731,6 @@ export default function DebtorDashboard() {
             {isLive ? "Supabase Realtime Connected" : "Reconnecting to Supabase…"}
           </span>
         </div>
-
       </div>
     </div>
   );
