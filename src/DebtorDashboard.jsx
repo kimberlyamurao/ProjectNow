@@ -14,14 +14,14 @@ import {
 
 // ─── 8-WEEK PLAN (date-based, auto-detects current week) ─────────────────────
 const EIGHT_WEEK_PLAN = [
-  { week: 1, label: "Log",                  dates: "May 25 – 29",    icon: FileText,     start: new Date("2025-05-25"), end: new Date("2025-05-29") },
-  { week: 2, label: "Reach Out",            dates: "Jun 1 – 5",      icon: Mail,         start: new Date("2025-06-01"), end: new Date("2025-06-05") },
-  { week: 3, label: "Escalation",           dates: "Jun 8 – 12",     icon: TrendingUp,   start: new Date("2025-06-08"), end: new Date("2025-06-12") },
-  { week: 4, label: "Call Major Items",     dates: "Jun 15 – 19",    icon: Phone,        start: new Date("2025-06-15"), end: new Date("2025-06-19") },
-  { week: 5, label: "Structural Process",   dates: "Jun 22 – 26",    icon: Cog,          start: new Date("2025-06-22"), end: new Date("2025-06-26") },
-  { week: 6, label: "Final Demand Letter",  dates: "Jun 29 – Jul 3", icon: FileWarning,  start: new Date("2025-06-29"), end: new Date("2025-07-03") },
-  { week: 7, label: "Optimization",         dates: "Jul 6 – 10",     icon: Search,       start: new Date("2025-07-06"), end: new Date("2025-07-10") },
-  { week: 8, label: "Sustainability",       dates: "Jul 13 – 17",    icon: Leaf,         start: new Date("2025-07-13"), end: new Date("2025-07-17") },
+  { week: 1, label: "Log",                  dates: "May 25 – 29",    icon: FileText,     start: new Date("2026-05-25"), end: new Date("2026-05-29") },
+  { week: 2, label: "Reach Out",            dates: "Jun 1 – 5",      icon: Mail,         start: new Date("2026-06-01"), end: new Date("2026-06-05") },
+  { week: 3, label: "Escalation",           dates: "Jun 8 – 12",     icon: TrendingUp,   start: new Date("2026-06-08"), end: new Date("2026-06-12") },
+  { week: 4, label: "Call Major Items",     dates: "Jun 15 – 19",    icon: Phone,        start: new Date("2026-06-15"), end: new Date("2026-06-19") },
+  { week: 5, label: "Structural Process",   dates: "Jun 22 – 26",    icon: Cog,          start: new Date("2026-06-22"), end: new Date("2026-06-26") },
+  { week: 6, label: "Final Demand Letter",  dates: "Jun 29 – Jul 3", icon: FileWarning,  start: new Date("2026-06-29"), end: new Date("2026-07-03") },
+  { week: 7, label: "Optimization",         dates: "Jul 6 – 10",     icon: Search,       start: new Date("2026-07-06"), end: new Date("2026-07-10") },
+  { week: 8, label: "Sustainability",       dates: "Jul 13 – 17",    icon: Leaf,         start: new Date("2026-07-13"), end: new Date("2026-07-17") },
 ];
 
 function getCurrentWeek() {
@@ -29,9 +29,8 @@ function getCurrentWeek() {
   for (const w of EIGHT_WEEK_PLAN) {
     if (today >= w.start && today <= w.end) return w.week;
   }
-  if (today < EIGHT_WEEK_PLAN[0].start) return 0;     // before plan
-  if (today > EIGHT_WEEK_PLAN[7].end)   return 9;     // after plan
-  // between weeks — find closest upcoming
+  if (today < EIGHT_WEEK_PLAN[0].start) return 0;
+  if (today > EIGHT_WEEK_PLAN[7].end)   return 9;
   for (const w of EIGHT_WEEK_PLAN) {
     if (today < w.start) return w.week;
   }
@@ -52,8 +51,6 @@ function transformDebtors(rows) {
     (r.action || "").toLowerCase().includes("deurwaarder")
   ).length;
 
-  // Use real bucket columns from DB (populated by addAgingBuckets.js)
-  // Falls back to oldest_inv_days derivation if columns are missing/zero
   const hasRealBuckets = rows.some(r =>
     (r.bucket_0_30 || 0) + (r.bucket_31_60 || 0) + (r.bucket_61_90 || 0) + (r.bucket_90_plus || 0) !== 0
   );
@@ -66,7 +63,6 @@ function transformDebtors(rows) {
       b90p  += r.bucket_90_plus || 0;
     });
   } else {
-    // fallback: derive from oldest_inv_days
     positive.forEach(r => {
       const d = r.oldest_inv_days || 0;
       if      (d <= 30) b030  += r.balance;
@@ -128,12 +124,9 @@ function transformDebtors(rows) {
   return { dso, totalOutstanding, escalations, agingBuckets, disputes, ownerWorkload, customers: top20, allRows: rows };
 }
 
-// ─── EXPORT TO EXCEL ──────────────────────────────────────────────────────────
-// Pure JS export — no extra library needed, generates a real .xlsx-compatible file
+// ─── EXPORT TO CSV ────────────────────────────────────────────────────────────
 function exportToExcel(rows) {
   if (!rows || rows.length === 0) return;
-
-  // Build CSV content (Excel opens CSV fine, or we can do proper XLSX via SheetJS if installed)
   const headers = ["ID", "Name", "Balance (€)", "Oldest Invoice Days", "Owner", "Action"];
   const csvRows = [
     headers.join(","),
@@ -146,7 +139,6 @@ function exportToExcel(rows) {
       `"${(r.action || "").replace(/"/g, '""')}"`,
     ].join(","))
   ];
-
   const csvContent = csvRows.join("\n");
   const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
   const url  = URL.createObjectURL(blob);
@@ -247,38 +239,114 @@ function SectionTitle({ children, icon: Icon }) {
   );
 }
 
-// ─── DSO GAUGE ────────────────────────────────────────────────────────────────
+// ─── DSO GAUGE (redesigned — blue palette, no text overlap) ──────────────────
 function DSOGauge({ value, target }) {
-  const pct = Math.min(value / 1000, 1);
-  const angle = -135 + pct * 270;
   const countVal = useCountUp(value);
+
+  // Arc geometry
+  const cx = 110, cy = 105, R = 78, strokeW = 13;
+  const startAngle = -210; // degrees from top (SVG: 0 = right)
+  const totalSweep = 240;
+  const pct = Math.min(value / 120, 1); // cap visual at 120d for scale
+
+  function polarToXY(angleDeg) {
+    const rad = (angleDeg - 90) * Math.PI / 180;
+    return {
+      x: cx + R * Math.cos(rad),
+      y: cy + R * Math.sin(rad),
+    };
+  }
+
+  function arcD(a1, a2) {
+    const s = polarToXY(a1);
+    const e = polarToXY(a2);
+    const large = (a2 - a1) > 180 ? 1 : 0;
+    return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
+  }
+
+  const fillEndAngle = startAngle + totalSweep * pct;
+  const dotPos = polarToXY(fillEndAngle);
+
   const color = value <= 30 ? "#22c55e" : value <= 90 ? "#f59e0b" : "#ef4444";
+
   return (
-    <div className="flex flex-col items-center">
-      <svg viewBox="0 0 160 100" className="w-44">
+    <div className="flex flex-col items-center gap-2">
+      <svg viewBox="0 0 220 155" className="w-52 overflow-visible">
         <defs>
-          <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#22c55e" />
-            <stop offset="40%" stopColor="#f59e0b" />
+          <linearGradient id="dsoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stopColor="#1565C0" />
+            <stop offset="35%"  stopColor="#1976D2" />
+            <stop offset="70%"  stopColor="#42A5F5" />
             <stop offset="100%" stopColor="#ef4444" />
           </linearGradient>
         </defs>
-        <path d="M 20 90 A 60 60 0 1 1 140 90" fill="none" stroke="#e2e8f0" strokeWidth="12" strokeLinecap="round" />
-        <path d="M 20 90 A 60 60 0 1 1 140 90" fill="none" stroke="url(#gaugeGrad)" strokeWidth="12"
-          strokeLinecap="round" strokeDasharray={`${pct * 188.5} 188.5`} />
-        <g transform={`translate(80,90) rotate(${angle})`}>
-          <line x1="0" y1="0" x2="0" y2="-44" stroke="#1e293b" strokeWidth="2.5" strokeLinecap="round" />
-          <circle cx="0" cy="0" r="4" fill="#1e293b" />
-        </g>
-        <text x="80" y="78" textAnchor="middle" fontSize="22" fontWeight="800" fill={color}>{countVal}</text>
-        <text x="80" y="96" textAnchor="middle" fontSize="9" fill="#64748b">DAYS AVG</text>
+
+        {/* Track */}
+        <path
+          d={arcD(startAngle, startAngle + totalSweep)}
+          fill="none"
+          stroke="rgba(55,138,221,0.15)"
+          strokeWidth={strokeW}
+          strokeLinecap="round"
+        />
+
+        {/* Fill */}
+        {pct > 0 && (
+          <path
+            d={arcD(startAngle, fillEndAngle)}
+            fill="none"
+            stroke="url(#dsoGrad)"
+            strokeWidth={strokeW}
+            strokeLinecap="round"
+          />
+        )}
+
+        {/* Dot indicator */}
+        <circle cx={dotPos.x} cy={dotPos.y} r={8} fill="#0D47A1" />
+        <circle cx={dotPos.x} cy={dotPos.y} r={4} fill="#fff" />
+
+        {/* Value — well clear of arc */}
+        <text x={cx} y={cy - 10} textAnchor="middle" fontSize="40" fontWeight="800" fill={color}>
+          {countVal}
+        </text>
+
+        {/* Label row — below value, above arc bottom */}
+        <text x={cx} y={cy + 16} textAnchor="middle" fontSize="9" fontWeight="600" fill="rgba(55,138,221,0.7)" letterSpacing="2">
+          DAYS AVG
+        </text>
       </svg>
-      <p className="text-xs text-slate-500 text-center mt-1 leading-tight">
+
+      <p className="text-xs text-slate-500 text-center leading-tight -mt-1">
         Weighted avg days overdue<br />by outstanding balance
       </p>
-      <span className="mt-2 text-xs px-2 py-0.5 rounded-full font-medium border bg-red-50 text-red-600 border-red-200">
+
+      <span
+        className="text-xs px-3 py-1 rounded-full font-semibold border flex items-center gap-1.5"
+        style={{ background: "linear-gradient(135deg,#FFEBEE,#FFCDD2)", borderColor: "#EF9A9A", color: "#C62828" }}
+      >
+        <AlertTriangle size={11} />
         Target: {target}d · Current: {value}d
       </span>
+
+      {/* Mini stat row */}
+      <div className="grid grid-cols-2 gap-2 w-full mt-1">
+        <div
+          className="flex flex-col items-center py-2 rounded-xl border"
+          style={{ background: "linear-gradient(135deg,#E3F2FD,#BBDEFB)", borderColor: "#90CAF9" }}
+        >
+          <Target size={13} className="text-blue-700 mb-0.5" />
+          <span className="text-[10px] text-blue-600 font-medium">Target</span>
+          <span className="text-sm font-black text-blue-800">{target}d</span>
+        </div>
+        <div
+          className="flex flex-col items-center py-2 rounded-xl border"
+          style={{ background: "linear-gradient(135deg,#FFEBEE,#FFCDD2)", borderColor: "#FFCDD2" }}
+        >
+          <Clock size={13} className="text-red-600 mb-0.5" />
+          <span className="text-[10px] text-red-500 font-medium">Current</span>
+          <span className="text-sm font-black text-red-700">{value}d</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -312,69 +380,101 @@ function EscalationBoard({ value }) {
   );
 }
 
-// ─── 8-WEEK PLAN TIMELINE ─────────────────────────────────────────────────────
+// ─── 8-WEEK PLAN TIMELINE (redesigned — blue gradient) ────────────────────────
 function EightWeekPlan() {
   const currentWeek = getCurrentWeek();
   const today = new Date();
 
   return (
     <div className="space-y-3">
-      {/* Timeline scroll area */}
       <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
         {EIGHT_WEEK_PLAN.map((w) => {
           const Icon = w.icon;
-          const isDone    = currentWeek > w.week;
-          const isCurrent = currentWeek === w.week;
-          const isUpcoming = currentWeek < w.week;
+          const isDone     = currentWeek > w.week;
+          const isCurrent  = currentWeek === w.week;
 
-          // Progress within current week
           let progress = 0;
           if (isCurrent) {
-            const total = w.end - w.start;
+            const total   = w.end - w.start;
             const elapsed = today - w.start;
             progress = Math.min(Math.max((elapsed / total) * 100, 5), 100);
           } else if (isDone) {
             progress = 100;
           }
 
+          // ── Styles driven by state ──
+          const rowStyle = isCurrent
+            ? {
+                background: "linear-gradient(135deg, #1565C0 0%, #1976D2 40%, #42A5F5 100%)",
+                borderColor: "#1565C0",
+                boxShadow: "0 4px 16px rgba(21,101,192,0.35)",
+              }
+            : isDone
+            ? {
+                background: "linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)",
+                borderColor: "#90CAF9",
+              }
+            : {
+                background: "rgba(0,0,0,0.02)",
+                borderColor: "rgba(0,0,0,0.07)",
+              };
+
+          const badgeStyle = isCurrent
+            ? { background: "rgba(255,255,255,0.2)", color: "#fff" }
+            : isDone
+            ? { background: "#1976D2", color: "#fff" }
+            : { background: "rgba(0,0,0,0.06)", color: "#94a3b8" };
+
+          const labelColor  = isCurrent ? "#fff"              : isDone ? "#0D47A1" : "#94a3b8";
+          const dateColor   = isCurrent ? "rgba(255,255,255,0.7)" : "#94a3b8";
+          const iconColor   = isCurrent ? "rgba(255,255,255,0.8)" : isDone ? "#1565C0" : "#94a3b8";
+
           return (
-            <div key={w.week}
-              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all duration-200
-                ${isCurrent  ? "bg-blue-600 border-blue-500 shadow-lg shadow-blue-200/50" :
-                  isDone      ? "bg-green-50 border-green-200" :
-                                "bg-slate-50 border-slate-100"}`}>
+            <div
+              key={w.week}
+              className="flex items-center gap-3 p-2.5 rounded-xl border transition-all duration-200"
+              style={rowStyle}
+            >
               {/* Week badge */}
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0
-                ${isCurrent  ? "bg-white/20 text-white" :
-                  isDone      ? "bg-green-500 text-white" :
-                                "bg-slate-200 text-slate-500"}`}>
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                style={badgeStyle}
+              >
                 {isDone ? <CheckCircle size={12} /> : `W${w.week}`}
               </div>
 
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <Icon size={11} className={isCurrent ? "text-white/80" : isDone ? "text-green-600" : "text-slate-400"} />
-                  <span className={`text-xs font-bold truncate
-                    ${isCurrent ? "text-white" : isDone ? "text-green-700" : "text-slate-500"}`}>
+                  <Icon size={11} style={{ color: iconColor }} />
+                  <span className="text-xs font-bold truncate" style={{ color: labelColor }}>
                     {w.label}
                   </span>
                   {isCurrent && (
-                    <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                    <span
+                      className="text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
+                      style={{ background: "rgba(255,255,255,0.25)", color: "#fff" }}
+                    >
                       NOW
                     </span>
                   )}
                 </div>
-                <div className={`text-[10px] mt-0.5 flex items-center gap-1
-                  ${isCurrent ? "text-white/70" : "text-slate-400"}`}>
+
+                <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: dateColor }}>
                   <Calendar size={8} />
                   {w.dates}
                 </div>
-                {/* Progress bar for current week */}
+
+                {/* Progress bar — current week only */}
                 {isCurrent && (
-                  <div className="mt-1.5 h-1 bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full bg-white rounded-full transition-all duration-500"
-                      style={{ width: `${progress}%` }} />
+                  <div
+                    className="mt-1.5 h-1 rounded-full overflow-hidden"
+                    style={{ background: "rgba(255,255,255,0.2)" }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${progress}%`, background: "#fff" }}
+                    />
                   </div>
                 )}
               </div>
@@ -384,16 +484,32 @@ function EightWeekPlan() {
       </div>
 
       {/* Status footer */}
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold
-        ${currentWeek === 0 ? "bg-slate-50 border-slate-200 text-slate-500" :
-          currentWeek === 9 ? "bg-green-50 border-green-200 text-green-700" :
-                              "bg-blue-50 border-blue-200 text-blue-700"}`}>
-        <Calendar size={12} />
-        {currentWeek === 0 && "Plan starts May 25, 2025"}
-        {currentWeek === 9 && "✓ All 8 weeks completed"}
-        {currentWeek >= 1 && currentWeek <= 8 &&
-          `Week ${currentWeek} of 8 · ${EIGHT_WEEK_PLAN[currentWeek - 1]?.label}`}
-      </div>
+      {currentWeek === 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold bg-slate-50 border-slate-200 text-slate-500">
+          <Calendar size={12} /> Plan starts May 25, 2026
+        </div>
+      )}
+      {currentWeek === 9 && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold"
+          style={{ background: "linear-gradient(135deg,#E3F2FD,#BBDEFB)", borderColor: "#90CAF9", color: "#0D47A1" }}
+        >
+          <CheckCircle size={12} /> ✓ All 8 weeks completed
+        </div>
+      )}
+      {currentWeek >= 1 && currentWeek <= 8 && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold"
+          style={{
+            background: "linear-gradient(135deg, #1565C0, #1976D2)",
+            borderColor: "#1565C0",
+            color: "#fff",
+          }}
+        >
+          <Calendar size={12} />
+          Week {currentWeek} of 8 · {EIGHT_WEEK_PLAN[currentWeek - 1]?.label}
+        </div>
+      )}
     </div>
   );
 }
@@ -598,7 +714,6 @@ export default function DebtorDashboard() {
     return () => { supabase.removeChannel(channel); setIsLive(false); };
   }, [fetchDebtors]);
 
-  // ── Export: re-fetch ALL rows (not just top 20) then download ──────────────
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
@@ -670,7 +785,6 @@ export default function DebtorDashboard() {
             <button className="flex items-center gap-1.5 text-xs bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
               <Filter size={12} /> Filter
             </button>
-            {/* ── EXPORT BUTTON ── */}
             <button onClick={handleExport} disabled={exporting}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-md">
               {exporting
@@ -680,7 +794,7 @@ export default function DebtorDashboard() {
           </div>
         </div>
 
-        {/* ── KPIs — now 2 cards (removed trend + collections) ── */}
+        {/* ── KPIs ── */}
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-3">
             <Activity size={14} className="text-blue-600" />
@@ -754,7 +868,6 @@ export default function DebtorDashboard() {
             </div>
           </GlassCard>
 
-          {/* ── 8-WEEK PLAN (replaces Resolution Lifecycle) ── */}
           <GlassCard className="p-4">
             <SectionTitle icon={Calendar}>8-Week Recovery Plan</SectionTitle>
             <EightWeekPlan />
@@ -763,7 +876,7 @@ export default function DebtorDashboard() {
 
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between text-[10px] text-slate-400">
-          <span>Debtor Recovery Dashboard · 8-Week Action Plan · May 25 – Jul 17, 2025</span>
+          <span>Debtor Recovery Dashboard · 8-Week Action Plan · May 25 – Jul 17, 2026</span>
           <span className="flex items-center gap-1.5">
             <span className={`w-1.5 h-1.5 rounded-full ${isLive ? "bg-green-400 animate-pulse" : "bg-orange-400"}`} />
             {isLive ? "Supabase Realtime Connected" : "Reconnecting to Supabase…"}
