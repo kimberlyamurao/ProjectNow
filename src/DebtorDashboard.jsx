@@ -52,15 +52,30 @@ function transformDebtors(rows) {
     (r.action || "").toLowerCase().includes("deurwaarder")
   ).length;
 
+  // Use real bucket columns from DB (populated by addAgingBuckets.js)
+  // Falls back to oldest_inv_days derivation if columns are missing/zero
+  const hasRealBuckets = rows.some(r =>
+    (r.bucket_0_30 || 0) + (r.bucket_31_60 || 0) + (r.bucket_61_90 || 0) + (r.bucket_90_plus || 0) !== 0
+  );
   let b030 = 0, b3160 = 0, b6190 = 0, b90p = 0;
-  positive.forEach(r => {
-    const d = r.oldest_inv_days || 0;
-    if      (d <= 30) b030  += r.balance;
-    else if (d <= 60) b3160 += r.balance;
-    else if (d <= 90) b6190 += r.balance;
-    else              b90p  += r.balance;
-  });
-  const bTotal = totalOutstanding || 1;
+  if (hasRealBuckets) {
+    rows.forEach(r => {
+      b030  += r.bucket_0_30    || 0;
+      b3160 += r.bucket_31_60   || 0;
+      b6190 += r.bucket_61_90   || 0;
+      b90p  += r.bucket_90_plus || 0;
+    });
+  } else {
+    // fallback: derive from oldest_inv_days
+    positive.forEach(r => {
+      const d = r.oldest_inv_days || 0;
+      if      (d <= 30) b030  += r.balance;
+      else if (d <= 60) b3160 += r.balance;
+      else if (d <= 90) b6190 += r.balance;
+      else              b90p  += r.balance;
+    });
+  }
+  const bTotal = (b030 + b3160 + b6190 + b90p) || 1;
   const agingBuckets = [
     { label: "0–30 Days",  pct: +((b030  / bTotal) * 100).toFixed(1), amount: b030,  color: "#22c55e" },
     { label: "31–60 Days", pct: +((b3160 / bTotal) * 100).toFixed(1), amount: b3160, color: "#3b82f6" },
@@ -556,7 +571,7 @@ export default function DebtorDashboard() {
     try {
       const { data: rows, error: err } = await supabase
         .from("debtors")
-        .select("id, name, balance, oldest_inv_days, owner, action")
+        .select("id, name, balance, oldest_inv_days, owner, action, bucket_0_30, bucket_31_60, bucket_61_90, bucket_90_plus")
         .order("balance", { ascending: false });
 
       if (err) throw err;
@@ -589,7 +604,7 @@ export default function DebtorDashboard() {
     try {
       const { data: rows, error: err } = await supabase
         .from("debtors")
-        .select("id, name, balance, oldest_inv_days, owner, action")
+        .select("id, name, balance, oldest_inv_days, owner, action, bucket_0_30, bucket_31_60, bucket_61_90, bucket_90_plus")
         .order("balance", { ascending: false });
       if (err) throw err;
       exportToExcel(rows);
