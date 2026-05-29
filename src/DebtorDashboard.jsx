@@ -1,60 +1,57 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 import {
-  TrendingDown, TrendingUp, AlertTriangle, Users, Clock,
-  FileText, Search, Handshake, Settings, CheckCircle,
-  ChevronRight, BarChart3, PieChart, Bell,
-  ArrowUpRight, ArrowDownRight, Filter, Download, RefreshCw,
-  Shield, Zap, Target, Activity, Euro, UserCheck, Gavel, Mail,
-  Wifi, WifiOff
+  AlertTriangle, Users, Clock, FileText, Search, Handshake,
+  CheckCircle, ChevronRight, BarChart3, PieChart, Bell,
+  ArrowUpRight, Filter, Download, RefreshCw, Shield,
+  Target, Activity, Euro, UserCheck, Gavel, Mail,
+  Wifi, WifiOff, Calendar, TrendingUp, Phone, FileWarning,
+  Cog, Leaf
 } from "lucide-react";
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, PieChart as RePieChart, Pie
 } from "recharts";
 
-// ─── STATIC (plan data — not from DB) ────────────────────────────────────────
-const STATIC = {
-  dsoTarget: 30,
-  balanceTrend: [
-    { week: "Wk 1", balance: 4425 }, { week: "Wk 2", balance: 4200 },
-    { week: "Wk 3", balance: 3980 }, { week: "Wk 4", balance: 3750 },
-    { week: "Wk 5", balance: 3500 }, { week: "Wk 6", balance: 3100 },
-    { week: "Wk 7", balance: 2600 }, { week: "Wk 8", balance: 2000 },
-  ],
-  weeklyCollections: [
-    { week: "Wk 1", amount: 225 }, { week: "Wk 2", amount: 220 },
-    { week: "Wk 3", amount: 230 }, { week: "Wk 4", amount: 250 },
-    { week: "Wk 5", amount: 250 }, { week: "Wk 6", amount: 400 },
-    { week: "Wk 7", amount: 500 }, { week: "Wk 8", amount: 600 },
-  ],
-  resolutionPhases: [
-    { phase: 1, label: "Log",         icon: FileText    },
-    { phase: 2, label: "Investigate", icon: Search      },
-    { phase: 3, label: "Collaborate", icon: Handshake   },
-    { phase: 4, label: "Resolve",     icon: Settings    },
-    { phase: 5, label: "Close",       icon: CheckCircle },
-  ],
-};
+// ─── 8-WEEK PLAN (date-based, auto-detects current week) ─────────────────────
+const EIGHT_WEEK_PLAN = [
+  { week: 1, label: "Log",                  dates: "May 25 – 29",    icon: FileText,     start: new Date("2025-05-25"), end: new Date("2025-05-29") },
+  { week: 2, label: "Reach Out",            dates: "Jun 1 – 5",      icon: Mail,         start: new Date("2025-06-01"), end: new Date("2025-06-05") },
+  { week: 3, label: "Escalation",           dates: "Jun 8 – 12",     icon: TrendingUp,   start: new Date("2025-06-08"), end: new Date("2025-06-12") },
+  { week: 4, label: "Call Major Items",     dates: "Jun 15 – 19",    icon: Phone,        start: new Date("2025-06-15"), end: new Date("2025-06-19") },
+  { week: 5, label: "Structural Process",   dates: "Jun 22 – 26",    icon: Cog,          start: new Date("2025-06-22"), end: new Date("2025-06-26") },
+  { week: 6, label: "Final Demand Letter",  dates: "Jun 29 – Jul 3", icon: FileWarning,  start: new Date("2025-06-29"), end: new Date("2025-07-03") },
+  { week: 7, label: "Optimization",         dates: "Jul 6 – 10",     icon: Search,       start: new Date("2025-07-06"), end: new Date("2025-07-10") },
+  { week: 8, label: "Sustainability",       dates: "Jul 13 – 17",    icon: Leaf,         start: new Date("2025-07-13"), end: new Date("2025-07-17") },
+];
+
+function getCurrentWeek() {
+  const today = new Date();
+  for (const w of EIGHT_WEEK_PLAN) {
+    if (today >= w.start && today <= w.end) return w.week;
+  }
+  if (today < EIGHT_WEEK_PLAN[0].start) return 0;     // before plan
+  if (today > EIGHT_WEEK_PLAN[7].end)   return 9;     // after plan
+  // between weeks — find closest upcoming
+  for (const w of EIGHT_WEEK_PLAN) {
+    if (today < w.start) return w.week;
+  }
+  return 8;
+}
 
 // ─── TRANSFORM: Supabase rows → dashboard metrics ────────────────────────────
-// Works with schema: id, name, balance, oldest_inv_days, owner, action
 function transformDebtors(rows) {
   if (!rows || rows.length === 0) return null;
 
   const positive = rows.filter(r => (r.balance || 0) > 0);
   const totalOutstanding = positive.reduce((s, r) => s + r.balance, 0);
 
-  // DSO — weighted average of oldest_inv_days by balance
-  const weightedDays = positive.reduce((s, r) => s + r.oldest_inv_days * r.balance, 0);
+  const weightedDays = positive.reduce((s, r) => s + (r.oldest_inv_days || 0) * r.balance, 0);
   const dso = totalOutstanding > 0 ? Math.round(weightedDays / totalOutstanding) : 0;
 
-  // Escalations — any action containing "deurwaarder" (case-insensitive)
   const escalations = rows.filter(r =>
     (r.action || "").toLowerCase().includes("deurwaarder")
   ).length;
 
-  // Aging buckets — derived from oldest_inv_days × balance
   let b030 = 0, b3160 = 0, b6190 = 0, b90p = 0;
   positive.forEach(r => {
     const d = r.oldest_inv_days || 0;
@@ -71,14 +68,13 @@ function transformDebtors(rows) {
     { label: "90+ Days",   pct: +((b90p  / bTotal) * 100).toFixed(1), amount: b90p,  color: "#ef4444" },
   ];
 
-  // Action item distribution
   let cntDeurwaarder = 0, cntEmail = 0, cntPayment = 0, cntOther = 0;
   rows.forEach(r => {
     const a = (r.action || "").toLowerCase();
-    if      (a.includes("deurwaarder")) cntDeurwaarder++;
-    else if (a.includes("email"))       cntEmail++;
-    else if (a.includes("payment") || a.includes("agreement")) cntPayment++;
-    else                                cntOther++;
+    if      (a.includes("deurwaarder"))                           cntDeurwaarder++;
+    else if (a.includes("email"))                                 cntEmail++;
+    else if (a.includes("payment") || a.includes("agreement"))   cntPayment++;
+    else                                                          cntOther++;
   });
   const aTotal = rows.length || 1;
   const disputes = [
@@ -88,7 +84,6 @@ function transformDebtors(rows) {
     { name: "Follow-up / Other", value: Math.round((cntOther       / aTotal) * 100), color: "#f59e0b" },
   ];
 
-  // Owner workload — sum of positive balances, skip Unassigned
   const ownerMap = {};
   positive.forEach(r => {
     const raw = r.owner || "";
@@ -102,21 +97,51 @@ function transformDebtors(rows) {
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 6);
 
-  // Top 20 customers sorted by balance descending
   const top20 = [...rows]
     .filter(r => (r.balance || 0) > 0)
     .sort((a, b) => b.balance - a.balance)
     .slice(0, 20)
     .map(r => ({
-      id:     String(r.id),
-      name:   r.name || "Unknown",
+      id:      String(r.id),
+      name:    r.name || "Unknown",
       balance: r.balance,
-      days:   r.oldest_inv_days || 0,
-      owner:  r.owner || "—",
-      action: r.action || "—",
+      days:    r.oldest_inv_days || 0,
+      owner:   r.owner || "—",
+      action:  r.action || "—",
     }));
 
-  return { dso, totalOutstanding, escalations, agingBuckets, disputes, ownerWorkload, customers: top20 };
+  return { dso, totalOutstanding, escalations, agingBuckets, disputes, ownerWorkload, customers: top20, allRows: rows };
+}
+
+// ─── EXPORT TO EXCEL ──────────────────────────────────────────────────────────
+// Pure JS export — no extra library needed, generates a real .xlsx-compatible file
+function exportToExcel(rows) {
+  if (!rows || rows.length === 0) return;
+
+  // Build CSV content (Excel opens CSV fine, or we can do proper XLSX via SheetJS if installed)
+  const headers = ["ID", "Name", "Balance (€)", "Oldest Invoice Days", "Owner", "Action"];
+  const csvRows = [
+    headers.join(","),
+    ...rows.map(r => [
+      r.id,
+      `"${(r.name || "").replace(/"/g, '""')}"`,
+      r.balance?.toFixed(2) ?? "0.00",
+      r.oldest_inv_days ?? 0,
+      `"${(r.owner || "").replace(/"/g, '""')}"`,
+      `"${(r.action || "").replace(/"/g, '""')}"`,
+    ].join(","))
+  ];
+
+  const csvContent = csvRows.join("\n");
+  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href     = url;
+  link.download = `debtors_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
@@ -129,7 +154,6 @@ function fmtFull(n) {
   return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 }
 
-// ─── COUNT-UP HOOK ────────────────────────────────────────────────────────────
 function useCountUp(target, duration = 1200) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -146,7 +170,7 @@ function useCountUp(target, duration = 1200) {
   return count;
 }
 
-// ─── LOADING SCREEN ───────────────────────────────────────────────────────────
+// ─── SCREENS ─────────────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50/40 to-slate-100 flex items-center justify-center">
@@ -169,7 +193,6 @@ function LoadingScreen() {
   );
 }
 
-// ─── ERROR SCREEN ─────────────────────────────────────────────────────────────
 function ErrorScreen({ message, onRetry }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50/40 to-slate-100 flex items-center justify-center">
@@ -211,7 +234,6 @@ function SectionTitle({ children, icon: Icon }) {
 
 // ─── DSO GAUGE ────────────────────────────────────────────────────────────────
 function DSOGauge({ value, target }) {
-  // Cap at 1200 days for gauge visual — DSO is 853 so cap at 1000 for scale
   const pct = Math.min(value / 1000, 1);
   const angle = -135 + pct * 270;
   const countVal = useCountUp(value);
@@ -275,53 +297,88 @@ function EscalationBoard({ value }) {
   );
 }
 
-// ─── BALANCE TREND ────────────────────────────────────────────────────────────
-function BalanceTrendChart({ data }) {
-  return (
-    <div className="h-36">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-          <defs>
-            <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#93c5fd" /><stop offset="100%" stopColor="#1d4ed8" />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="week" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-          <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={v => `€${v}k`} />
-          <Tooltip contentStyle={{ background: "#1e293b", border: "none", borderRadius: 8, color: "#f8fafc", fontSize: 11 }}
-            formatter={v => [`€${v}k`, "Balance"]} />
-          <Line type="monotone" dataKey="balance" stroke="url(#lineGrad)" strokeWidth={2.5}
-            dot={{ fill: "#3b82f6", r: 3, strokeWidth: 0 }} activeDot={{ r: 5, fill: "#1d4ed8" }} />
-        </LineChart>
-      </ResponsiveContainer>
-      <div className="flex items-center gap-1.5 mt-1">
-        <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-        <span className="text-xs text-slate-500">8-Week reduction plan · Starting €4.42M</span>
-      </div>
-    </div>
-  );
-}
+// ─── 8-WEEK PLAN TIMELINE ─────────────────────────────────────────────────────
+function EightWeekPlan() {
+  const currentWeek = getCurrentWeek();
+  const today = new Date();
 
-// ─── WEEKLY COLLECTIONS ───────────────────────────────────────────────────────
-function WeeklyCollectionsChart({ data }) {
   return (
-    <div className="h-36">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="week" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-          <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={v => `€${v}k`} />
-          <Tooltip contentStyle={{ background: "#1e293b", border: "none", borderRadius: 8, color: "#f8fafc", fontSize: 11 }}
-            formatter={v => [`€${v}k`, "Target"]} />
-          <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={i === data.length - 1 ? "#16a34a" : `rgba(74,222,128,${0.4 + i * 0.07})`} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-      <p className="text-xs text-slate-500 mt-1">Weekly collection target · 8-week plan</p>
+    <div className="space-y-3">
+      {/* Timeline scroll area */}
+      <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+        {EIGHT_WEEK_PLAN.map((w) => {
+          const Icon = w.icon;
+          const isDone    = currentWeek > w.week;
+          const isCurrent = currentWeek === w.week;
+          const isUpcoming = currentWeek < w.week;
+
+          // Progress within current week
+          let progress = 0;
+          if (isCurrent) {
+            const total = w.end - w.start;
+            const elapsed = today - w.start;
+            progress = Math.min(Math.max((elapsed / total) * 100, 5), 100);
+          } else if (isDone) {
+            progress = 100;
+          }
+
+          return (
+            <div key={w.week}
+              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all duration-200
+                ${isCurrent  ? "bg-blue-600 border-blue-500 shadow-lg shadow-blue-200/50" :
+                  isDone      ? "bg-green-50 border-green-200" :
+                                "bg-slate-50 border-slate-100"}`}>
+              {/* Week badge */}
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0
+                ${isCurrent  ? "bg-white/20 text-white" :
+                  isDone      ? "bg-green-500 text-white" :
+                                "bg-slate-200 text-slate-500"}`}>
+                {isDone ? <CheckCircle size={12} /> : `W${w.week}`}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <Icon size={11} className={isCurrent ? "text-white/80" : isDone ? "text-green-600" : "text-slate-400"} />
+                  <span className={`text-xs font-bold truncate
+                    ${isCurrent ? "text-white" : isDone ? "text-green-700" : "text-slate-500"}`}>
+                    {w.label}
+                  </span>
+                  {isCurrent && (
+                    <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                      NOW
+                    </span>
+                  )}
+                </div>
+                <div className={`text-[10px] mt-0.5 flex items-center gap-1
+                  ${isCurrent ? "text-white/70" : "text-slate-400"}`}>
+                  <Calendar size={8} />
+                  {w.dates}
+                </div>
+                {/* Progress bar for current week */}
+                {isCurrent && (
+                  <div className="mt-1.5 h-1 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full bg-white rounded-full transition-all duration-500"
+                      style={{ width: `${progress}%` }} />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Status footer */}
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold
+        ${currentWeek === 0 ? "bg-slate-50 border-slate-200 text-slate-500" :
+          currentWeek === 9 ? "bg-green-50 border-green-200 text-green-700" :
+                              "bg-blue-50 border-blue-200 text-blue-700"}`}>
+        <Calendar size={12} />
+        {currentWeek === 0 && "Plan starts May 25, 2025"}
+        {currentWeek === 9 && "✓ All 8 weeks completed"}
+        {currentWeek >= 1 && currentWeek <= 8 &&
+          `Week ${currentWeek} of 8 · ${EIGHT_WEEK_PLAN[currentWeek - 1]?.label}`}
+      </div>
     </div>
   );
 }
@@ -484,41 +541,6 @@ function OwnerWorkloadChart({ data }) {
   );
 }
 
-// ─── RESOLUTION LIFECYCLE ─────────────────────────────────────────────────────
-function ResolutionLifecycle({ phases }) {
-  const [active, setActive] = useState(3);
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-1">
-        {phases.map((p, i) => {
-          const Icon = p.icon;
-          const isActive  = p.phase <= active;
-          const isCurrent = p.phase === active;
-          return (
-            <div key={i} className="flex items-center flex-1">
-              <button onClick={() => setActive(p.phase)}
-                className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all duration-300 flex-1
-                  ${isCurrent ? "bg-blue-600 text-white shadow-lg shadow-blue-200 scale-105" :
-                    isActive   ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-400"}`}>
-                <Icon size={14} /><span className="text-[9px] font-bold">{p.label}</span>
-              </button>
-              {i < phases.length - 1 && (
-                <div className={`h-0.5 w-2 ${p.phase < active ? "bg-blue-400" : "bg-slate-200"}`} />
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 flex items-start gap-2">
-        <Zap size={12} className="text-blue-500 mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-blue-700">
-          <strong>Goal:</strong> Resolution within <strong>5 working days</strong> as mandated in Week 3.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 export default function DebtorDashboard() {
   const [data,        setData]        = useState(null);
@@ -526,6 +548,7 @@ export default function DebtorDashboard() {
   const [error,       setError]       = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing,  setRefreshing]  = useState(false);
+  const [exporting,   setExporting]   = useState(false);
   const [isLive,      setIsLive]      = useState(false);
 
   const fetchDebtors = useCallback(async (showSpinner = false) => {
@@ -551,22 +574,38 @@ export default function DebtorDashboard() {
 
   useEffect(() => {
     fetchDebtors();
-
     const channel = supabase
       .channel("debtors-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "debtors" }, () => {
         fetchDebtors();
       })
       .subscribe(status => setIsLive(status === "SUBSCRIBED"));
-
     return () => { supabase.removeChannel(channel); setIsLive(false); };
   }, [fetchDebtors]);
+
+  // ── Export: re-fetch ALL rows (not just top 20) then download ──────────────
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const { data: rows, error: err } = await supabase
+        .from("debtors")
+        .select("id, name, balance, oldest_inv_days, owner, action")
+        .order("balance", { ascending: false });
+      if (err) throw err;
+      exportToExcel(rows);
+    } catch (err) {
+      alert("Export failed: " + (err.message || "Unknown error"));
+    } finally {
+      setExporting(false);
+    }
+  }, []);
 
   if (loading) return <LoadingScreen />;
   if (error)   return <ErrorScreen message={error} onRetry={() => { setLoading(true); fetchDebtors(); }} />;
   if (!data)   return <ErrorScreen message="No data returned from Supabase." onRetry={() => { setLoading(true); fetchDebtors(); }} />;
 
   const topOwner = data.ownerWorkload[0];
+  const currentWeek = getCurrentWeek();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50/40 to-slate-100 font-sans p-4">
@@ -601,6 +640,11 @@ export default function DebtorDashboard() {
               <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <Euro size={10} />{fmtFull(data.totalOutstanding)} outstanding
               </span>
+              {currentWeek >= 1 && currentWeek <= 8 && (
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Calendar size={10} /> Week {currentWeek}: {EIGHT_WEEK_PLAN[currentWeek - 1]?.label}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -611,31 +655,27 @@ export default function DebtorDashboard() {
             <button className="flex items-center gap-1.5 text-xs bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
               <Filter size={12} /> Filter
             </button>
-            <button className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-xl hover:bg-blue-700 transition-all shadow-md">
-              <Download size={12} /> Export
+            {/* ── EXPORT BUTTON ── */}
+            <button onClick={handleExport} disabled={exporting}
+              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-md">
+              {exporting
+                ? <><RefreshCw size={12} className="animate-spin" /> Exporting…</>
+                : <><Download size={12} /> Export CSV</>}
             </button>
           </div>
         </div>
 
-        {/* ── KPIs ── */}
+        {/* ── KPIs — now 2 cards (removed trend + collections) ── */}
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-3">
             <Activity size={14} className="text-blue-600" />
             <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">Executive KPIs — High-Level Metrics</span>
             <div className="flex-1 h-px bg-slate-200" />
           </div>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <GlassCard className="p-4 flex flex-col items-center">
               <SectionTitle icon={Target}>Days Sales Outstanding</SectionTitle>
-              <DSOGauge value={data.dso} target={STATIC.dsoTarget} />
-            </GlassCard>
-            <GlassCard className="p-4">
-              <SectionTitle icon={TrendingDown}>90-Day Balance Trend</SectionTitle>
-              <BalanceTrendChart data={STATIC.balanceTrend} />
-            </GlassCard>
-            <GlassCard className="p-4">
-              <SectionTitle icon={TrendingUp}>Weekly Collection Targets</SectionTitle>
-              <WeeklyCollectionsChart data={STATIC.weeklyCollections} />
+              <DSOGauge value={data.dso} target={30} />
             </GlassCard>
             <GlassCard className="p-4 flex flex-col items-center justify-center">
               <SectionTitle icon={Bell}>Deurwaarder Escalations</SectionTitle>
@@ -644,12 +684,12 @@ export default function DebtorDashboard() {
           </div>
         </div>
 
-        {/* ── Middle ── */}
+        {/* ── Middle row ── */}
         <div className="grid grid-cols-5 gap-4 mb-4">
           <GlassCard className="col-span-2 p-4">
             <SectionTitle icon={Users}>Top 20 Priority Tracker</SectionTitle>
             <p className="text-xs font-semibold text-slate-600 mb-0.5">Outstanding Balance & Days Overdue</p>
-            <p className="text-[10px] text-slate-400 mb-3">Live from Supabase · {data.customers.length} shown · sorted by balance</p>
+            <p className="text-[10px] text-slate-400 mb-3">Live from Supabase · sorted by balance</p>
             <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
               {data.customers.map((c, i) => <CustomerRow key={c.id} customer={c} index={i} />)}
             </div>
@@ -667,12 +707,12 @@ export default function DebtorDashboard() {
           </GlassCard>
         </div>
 
-        {/* ── Bottom ── */}
+        {/* ── Bottom row ── */}
         <div className="grid grid-cols-3 gap-4">
           <GlassCard className="p-4">
             <SectionTitle icon={PieChart}>Action Item Distribution</SectionTitle>
             <DisputeDonut data={data.disputes} />
-            <p className="text-xs text-slate-500 mt-3">Categorises recovery actions across all {data.customers.length} debtors.</p>
+            <p className="text-xs text-slate-500 mt-3">Categorises recovery actions across all debtors.</p>
           </GlassCard>
 
           <GlassCard className="p-4">
@@ -699,33 +739,16 @@ export default function DebtorDashboard() {
             </div>
           </GlassCard>
 
+          {/* ── 8-WEEK PLAN (replaces Resolution Lifecycle) ── */}
           <GlassCard className="p-4">
-            <SectionTitle icon={CheckCircle}>Resolution Lifecycle</SectionTitle>
-            <ResolutionLifecycle phases={STATIC.resolutionPhases} />
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-3 border border-blue-100">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <ArrowDownRight size={12} className="text-green-500" />
-                  <span className="text-xs font-bold text-slate-700">Target Resolution</span>
-                </div>
-                <span className="text-xl font-black text-blue-700">5d</span>
-                <div className="text-[10px] text-slate-500">week 3 mandate</div>
-              </div>
-              <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-3 border border-orange-100">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <AlertTriangle size={12} className="text-orange-500" />
-                  <span className="text-xs font-bold text-slate-700">Total Debtors</span>
-                </div>
-                <span className="text-xl font-black text-orange-600">{data.customers.length}</span>
-                <div className="text-[10px] text-slate-500">tracked accounts</div>
-              </div>
-            </div>
+            <SectionTitle icon={Calendar}>8-Week Recovery Plan</SectionTitle>
+            <EightWeekPlan />
           </GlassCard>
         </div>
 
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between text-[10px] text-slate-400">
-          <span>Debtor Recovery Dashboard · 8-Week Action Plan · {new Date().toLocaleDateString()}</span>
+          <span>Debtor Recovery Dashboard · 8-Week Action Plan · May 25 – Jul 17, 2025</span>
           <span className="flex items-center gap-1.5">
             <span className={`w-1.5 h-1.5 rounded-full ${isLive ? "bg-green-400 animate-pulse" : "bg-orange-400"}`} />
             {isLive ? "Supabase Realtime Connected" : "Reconnecting to Supabase…"}
