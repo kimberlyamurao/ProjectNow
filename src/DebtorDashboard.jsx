@@ -13,15 +13,22 @@ import {
 } from "recharts";
 
 // ─── 8-WEEK PLAN (date-based, auto-detects current week) ─────────────────────
+// end dates use 23:59:59 so the full last day is included
+function eod(dateStr) {
+  const d = new Date(dateStr);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 const EIGHT_WEEK_PLAN = [
-  { week: 1, label: "Log",                  dates: "May 25 – 29",    icon: FileText,     start: new Date("2026-05-25"), end: new Date("2026-05-29") },
-  { week: 2, label: "Reach Out",            dates: "Jun 1 – 5",      icon: Mail,         start: new Date("2026-06-01"), end: new Date("2026-06-05") },
-  { week: 3, label: "Escalation",           dates: "Jun 8 – 12",     icon: TrendingUp,   start: new Date("2026-06-08"), end: new Date("2026-06-12") },
-  { week: 4, label: "Call Major Items",     dates: "Jun 15 – 19",    icon: Phone,        start: new Date("2026-06-15"), end: new Date("2026-06-19") },
-  { week: 5, label: "Structural Process",   dates: "Jun 22 – 26",    icon: Cog,          start: new Date("2026-06-22"), end: new Date("2026-06-26") },
-  { week: 6, label: "Final Demand Letter",  dates: "Jun 29 – Jul 3", icon: FileWarning,  start: new Date("2026-06-29"), end: new Date("2026-07-03") },
-  { week: 7, label: "Optimization",         dates: "Jul 6 – 10",     icon: Search,       start: new Date("2026-07-06"), end: new Date("2026-07-10") },
-  { week: 8, label: "Sustainability",       dates: "Jul 13 – 17",    icon: Leaf,         start: new Date("2026-07-13"), end: new Date("2026-07-17") },
+  { week: 1, label: "Log",                  dates: "May 25 – 29",    icon: FileText,     start: new Date("2026-05-25"), end: eod("2026-05-29") },
+  { week: 2, label: "Reach Out",            dates: "Jun 1 – 5",      icon: Mail,         start: new Date("2026-06-01"), end: eod("2026-06-05") },
+  { week: 3, label: "Escalation",           dates: "Jun 8 – 12",     icon: TrendingUp,   start: new Date("2026-06-08"), end: eod("2026-06-12") },
+  { week: 4, label: "Call Major Items",     dates: "Jun 15 – 19",    icon: Phone,        start: new Date("2026-06-15"), end: eod("2026-06-19") },
+  { week: 5, label: "Structural Process",   dates: "Jun 22 – 26",    icon: Cog,          start: new Date("2026-06-22"), end: eod("2026-06-26") },
+  { week: 6, label: "Final Demand Letter",  dates: "Jun 29 – Jul 3", icon: FileWarning,  start: new Date("2026-06-29"), end: eod("2026-07-03") },
+  { week: 7, label: "Optimization",         dates: "Jul 6 – 10",     icon: Search,       start: new Date("2026-07-06"), end: eod("2026-07-10") },
+  { week: 8, label: "Sustainability",       dates: "Jul 13 – 17",    icon: Leaf,         start: new Date("2026-07-13"), end: eod("2026-07-17") },
 ];
 
 function getCurrentWeek() {
@@ -239,22 +246,18 @@ function SectionTitle({ children, icon: Icon }) {
   );
 }
 
-// ─── DSO GAUGE (redesigned — blue palette, no text overlap) ──────────────────
+// ─── DSO GAUGE (redesigned — blue palette, zero text overlap) ────────────────
 function DSOGauge({ value, target }) {
   const countVal = useCountUp(value);
 
-  // Arc geometry
-  const cx = 110, cy = 105, R = 78, strokeW = 13;
-  const startAngle = -210; // degrees from top (SVG: 0 = right)
+  const cx = 120, cy = 112, R = 84, strokeW = 13;
+  const startAngle = -210;
   const totalSweep = 240;
-  const pct = Math.min(value / 120, 1); // cap visual at 120d for scale
+  const pct = Math.min(value / 120, 1);
 
   function polarToXY(angleDeg) {
     const rad = (angleDeg - 90) * Math.PI / 180;
-    return {
-      x: cx + R * Math.cos(rad),
-      y: cy + R * Math.sin(rad),
-    };
+    return { x: cx + R * Math.cos(rad), y: cy + R * Math.sin(rad) };
   }
 
   function arcD(a1, a2) {
@@ -266,82 +269,78 @@ function DSOGauge({ value, target }) {
 
   const fillEndAngle = startAngle + totalSweep * pct;
   const dotPos = polarToXY(fillEndAngle);
-
   const color = value <= 30 ? "#22c55e" : value <= 90 ? "#f59e0b" : "#ef4444";
 
+  // SVG viewBox is exactly tall enough for the arc — no extra space for text
+  // All text lives OUTSIDE the SVG as normal HTML elements (no overlap possible)
   return (
-    <div className="flex flex-col items-center gap-2">
-      <svg viewBox="0 0 220 155" className="w-52 overflow-visible">
-        <defs>
-          <linearGradient id="dsoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"   stopColor="#1565C0" />
-            <stop offset="35%"  stopColor="#1976D2" />
-            <stop offset="70%"  stopColor="#42A5F5" />
-            <stop offset="100%" stopColor="#ef4444" />
-          </linearGradient>
-        </defs>
+    <div className="flex flex-col items-center gap-2 w-full">
 
-        {/* Track */}
-        <path
-          d={arcD(startAngle, startAngle + totalSweep)}
-          fill="none"
-          stroke="rgba(55,138,221,0.15)"
-          strokeWidth={strokeW}
-          strokeLinecap="round"
-        />
+      {/* Arc-only SVG — viewBox height stops just below arc bottom ~cy+R*sin60 */}
+      <div className="relative w-56">
+        <svg viewBox="0 0 240 148" className="w-full">
+          <defs>
+            <linearGradient id="dsoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stopColor="#1565C0" />
+              <stop offset="35%"  stopColor="#1976D2" />
+              <stop offset="70%"  stopColor="#42A5F5" />
+              <stop offset="100%" stopColor="#ef4444" />
+            </linearGradient>
+          </defs>
 
-        {/* Fill */}
-        {pct > 0 && (
-          <path
-            d={arcD(startAngle, fillEndAngle)}
-            fill="none"
-            stroke="url(#dsoGrad)"
-            strokeWidth={strokeW}
-            strokeLinecap="round"
-          />
-        )}
+          {/* Track */}
+          <path d={arcD(startAngle, startAngle + totalSweep)}
+            fill="none" stroke="rgba(55,138,221,0.15)"
+            strokeWidth={strokeW} strokeLinecap="round" />
 
-        {/* Dot indicator */}
-        <circle cx={dotPos.x} cy={dotPos.y} r={8} fill="#0D47A1" />
-        <circle cx={dotPos.x} cy={dotPos.y} r={4} fill="#fff" />
+          {/* Filled arc */}
+          {pct > 0 && (
+            <path d={arcD(startAngle, fillEndAngle)}
+              fill="none" stroke="url(#dsoGrad)"
+              strokeWidth={strokeW} strokeLinecap="round" />
+          )}
 
-        {/* Value — well clear of arc */}
-        <text x={cx} y={cy - 10} textAnchor="middle" fontSize="40" fontWeight="800" fill={color}>
-          {countVal}
-        </text>
+          {/* Dot indicator on arc */}
+          <circle cx={dotPos.x} cy={dotPos.y} r={9}  fill="#0D47A1" />
+          <circle cx={dotPos.x} cy={dotPos.y} r={4.5} fill="#fff" />
 
-        {/* Label row — below value, above arc bottom */}
-        <text x={cx} y={cy + 16} textAnchor="middle" fontSize="9" fontWeight="600" fill="rgba(55,138,221,0.7)" letterSpacing="2">
-          DAYS AVG
-        </text>
-      </svg>
+          {/* Big value number — centred, sits in the open space inside arc */}
+          <text x={cx} y={cy - 6}
+            textAnchor="middle" fontSize="44" fontWeight="800" fill={color}>
+            {countVal}
+          </text>
 
-      <p className="text-xs text-slate-500 text-center leading-tight -mt-1">
+          {/* "DAYS AVG" — directly below number, still inside arc ring gap */}
+          <text x={cx} y={cy + 20}
+            textAnchor="middle" fontSize="9" fontWeight="600"
+            fill="rgba(55,138,221,0.65)" letterSpacing="2">
+            DAYS AVG
+          </text>
+        </svg>
+      </div>
+
+      {/* Description — pure HTML div, rendered below SVG, can never overlap */}
+      <p className="text-xs text-slate-500 text-center leading-snug">
         Weighted avg days overdue<br />by outstanding balance
       </p>
 
-      <span
-        className="text-xs px-3 py-1 rounded-full font-semibold border flex items-center gap-1.5"
-        style={{ background: "linear-gradient(135deg,#FFEBEE,#FFCDD2)", borderColor: "#EF9A9A", color: "#C62828" }}
-      >
+      {/* Alert badge */}
+      <span className="text-xs px-3 py-1 rounded-full font-semibold border flex items-center gap-1.5"
+        style={{ background: "linear-gradient(135deg,#FFEBEE,#FFCDD2)", borderColor: "#EF9A9A", color: "#C62828" }}>
         <AlertTriangle size={11} />
         Target: {target}d · Current: {value}d
       </span>
 
-      {/* Mini stat row */}
-      <div className="grid grid-cols-2 gap-2 w-full mt-1">
-        <div
-          className="flex flex-col items-center py-2 rounded-xl border"
-          style={{ background: "linear-gradient(135deg,#E3F2FD,#BBDEFB)", borderColor: "#90CAF9" }}
-        >
+      {/* Mini stat cards */}
+      <div className="grid grid-cols-2 gap-2 w-full">
+        <div className="flex flex-col items-center py-2 rounded-xl border"
+          style={{ background: "linear-gradient(135deg,#E3F2FD,#BBDEFB)", borderColor: "#90CAF9" }}>
           <Target size={13} className="text-blue-700 mb-0.5" />
           <span className="text-[10px] text-blue-600 font-medium">Target</span>
           <span className="text-sm font-black text-blue-800">{target}d</span>
         </div>
-        <div
-          className="flex flex-col items-center py-2 rounded-xl border"
-          style={{ background: "linear-gradient(135deg,#FFEBEE,#FFCDD2)", borderColor: "#FFCDD2" }}
-        >
+        <div className="flex flex-col items-center py-2 rounded-xl border"
+          style={{ background: "linear-gradient(135deg,#FFEBEE,#FFCDD2)", borderColor: "#FFCDD2" }}>
           <Clock size={13} className="text-red-600 mb-0.5" />
           <span className="text-[10px] text-red-500 font-medium">Current</span>
           <span className="text-sm font-black text-red-700">{value}d</span>
