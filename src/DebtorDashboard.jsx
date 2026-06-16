@@ -849,6 +849,45 @@ if (paidRows && paidRows.length > 0) {
           </div>
         </div>
 
+         {recoveryStats && (
+  <div className="grid grid-cols-5 gap-4 mb-4">
+    <GlassCard className="p-4">
+      <div className="text-xs text-slate-500">Recovered</div>
+      <div className="text-xl font-bold">
+        €{recoveryStats.totalRecovered.toLocaleString("nl-NL")}
+      </div>
+    </GlassCard>
+
+    <GlassCard className="p-4">
+      <div className="text-xs text-slate-500">Invoices Paid</div>
+      <div className="text-xl font-bold">
+        {recoveryStats.invoicesPaid}
+      </div>
+    </GlassCard>
+
+    <GlassCard className="p-4">
+      <div className="text-xs text-slate-500">Average Value</div>
+      <div className="text-xl font-bold">
+        €{Math.round(recoveryStats.avgValue).toLocaleString("nl-NL")}
+      </div>
+    </GlassCard>
+
+    <GlassCard className="p-4">
+      <div className="text-xs text-slate-500">Largest Payment</div>
+      <div className="text-xl font-bold">
+        €{recoveryStats.largest.toLocaleString("nl-NL")}
+      </div>
+    </GlassCard>
+
+    <GlassCard className="p-4">
+      <div className="text-xs text-slate-500">Last Payment</div>
+      <div className="text-sm font-bold">
+        {recoveryStats.lastPayment}
+      </div>
+    </GlassCard>
+  </div>
+)}
+
         {/* ── Middle row ── */}
         <div className="grid grid-cols-5 gap-4 mb-4">
           <GlassCard className="col-span-2 p-4">
@@ -909,45 +948,6 @@ if (paidRows && paidRows.length > 0) {
             <EightWeekPlan />
           </GlassCard>
         </div>
-
-        {recoveryStats && (
-  <div className="grid grid-cols-5 gap-4 mb-4">
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Recovered</div>
-      <div className="text-xl font-bold">
-        €{recoveryStats.totalRecovered.toLocaleString("nl-NL")}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Invoices Paid</div>
-      <div className="text-xl font-bold">
-        {recoveryStats.invoicesPaid}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Average Value</div>
-      <div className="text-xl font-bold">
-        €{Math.round(recoveryStats.avgValue).toLocaleString("nl-NL")}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Largest Payment</div>
-      <div className="text-xl font-bold">
-        €{recoveryStats.largest.toLocaleString("nl-NL")}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Last Payment</div>
-      <div className="text-sm font-bold">
-        {recoveryStats.lastPayment}
-      </div>
-    </GlassCard>
-  </div>
-)}
 
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between text-[10px] text-slate-400">
