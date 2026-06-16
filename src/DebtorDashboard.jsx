@@ -671,6 +671,42 @@ function OwnerWorkloadChart({ data }) {
   );
 }
 
+function transformPaidInvoices(rows) {
+  if (!rows?.length) return null;
+
+  const totalRecovered = rows.reduce(
+    (sum, row) => sum + Number(row.amount || 0),
+    0
+  );
+
+  const invoicesPaid = rows.length;
+
+  const avgInvoiceValue =
+    invoicesPaid > 0
+      ? totalRecovered / invoicesPaid
+      : 0;
+
+  const largestPayment = Math.max(
+    ...rows.map(r => Number(r.amount || 0))
+  );
+
+  const mostRecentPayment =
+    rows
+      .sort(
+        (a, b) =>
+          new Date(b.paid_date) -
+          new Date(a.paid_date)
+      )[0]?.paid_date;
+
+  return {
+    totalRecovered,
+    invoicesPaid,
+    avgInvoiceValue,
+    largestPayment,
+    mostRecentPayment
+  };
+}
+
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 export default function DebtorDashboard() {
   const [data,        setData]        = useState(null);
@@ -680,6 +716,7 @@ export default function DebtorDashboard() {
   const [refreshing,  setRefreshing]  = useState(false);
   const [exporting,   setExporting]   = useState(false);
   const [isLive,      setIsLive]      = useState(false);
+  const [paidOverview, setPaidOverview] = useState(null);
 
   const fetchDebtors = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true);
@@ -728,6 +765,20 @@ export default function DebtorDashboard() {
       setExporting(false);
     }
   }, []);
+  const fetchPaidInvoices = async () => {
+  const { data, error } = await supabase
+    .from("paid_invoices")
+    .select("*");
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  setPaidOverview(
+    transformPaidInvoices(data)
+  );
+};
 
   if (loading) return <LoadingScreen />;
   if (error)   return <ErrorScreen message={error} onRetry={() => { setLoading(true); fetchDebtors(); }} />;
@@ -792,6 +843,69 @@ export default function DebtorDashboard() {
             </button>
           </div>
         </div>
+        {paidOverview && (
+  <GlassCard className="p-6 mb-4">
+    <div className="flex justify-between items-start mb-4">
+      <div>
+        <div className="text-xs font-bold text-slate-500 uppercase">
+          Paid Invoices
+        </div>
+
+        <div className="text-4xl font-black text-green-600">
+          {fmtFull(paidOverview.totalRecovered)}
+        </div>
+
+        <div className="text-sm text-slate-500">
+          Across all paid invoices
+        </div>
+      </div>
+
+      <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+        Live
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="bg-slate-50 p-4 rounded-xl">
+        <div className="text-xs text-slate-500">
+          Invoices Paid
+        </div>
+        <div className="text-2xl font-black">
+          {paidOverview.invoicesPaid}
+        </div>
+      </div>
+
+      <div className="bg-slate-50 p-4 rounded-xl">
+        <div className="text-xs text-slate-500">
+          Avg Invoice
+        </div>
+        <div className="text-2xl font-black">
+          {fmtFull(paidOverview.avgInvoiceValue)}
+        </div>
+      </div>
+
+      <div className="bg-slate-50 p-4 rounded-xl">
+        <div className="text-xs text-slate-500">
+          Largest Payment
+        </div>
+        <div className="text-2xl font-black">
+          {fmtFull(paidOverview.largestPayment)}
+        </div>
+      </div>
+
+      <div className="bg-slate-50 p-4 rounded-xl">
+        <div className="text-xs text-slate-500">
+          Most Recent
+        </div>
+        <div className="text-lg font-black">
+          {new Date(
+            paidOverview.mostRecentPayment
+          ).toLocaleDateString()}
+        </div>
+      </div>
+    </div>
+  </GlassCard>
+)}
 
         {/* ── KPIs ── */}
         <div className="mb-4">
