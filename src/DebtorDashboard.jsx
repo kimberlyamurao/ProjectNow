@@ -515,7 +515,7 @@ function EightWeekPlan() {
 
 // ─── AGING BUCKETS ────────────────────────────────────────────────────────────
 function AgingBuckets({ data }) {
-  const [hovered, setHovered] = (null);
+  const [hovered, setHovered] = useState(null);
   const critical = data.find(b => b.label.includes("90+"));
   return (
     <div className="space-y-3">
@@ -680,7 +680,6 @@ export default function DebtorDashboard() {
   const [refreshing,  setRefreshing]  = useState(false);
   const [exporting,   setExporting]   = useState(false);
   const [isLive,      setIsLive]      = useState(false);
-  const [recoveryStats, setRecoveryStats] = useState(null);
 
   const fetchDebtors = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true);
@@ -689,42 +688,6 @@ export default function DebtorDashboard() {
         .from("debtors")
         .select("id, name, balance, oldest_inv_days, owner, action, bucket_0_30, bucket_31_60, bucket_61_90, bucket_90_plus")
         .order("balance", { ascending: false });
-      const PROJECT_NOW_START = "2026-05-25";
-
-const { data: paidRows, error: paidErr } = await supabase
-  .from("paid_invoices")
-  .select("amount, paid_date")
-  .gte("paid_date", PROJECT_NOW_START);
-
-if (paidErr) throw paidErr;
-
-if (paidRows && paidRows.length > 0) {
-  const totalRecovered = paidRows.reduce(
-    (sum, r) => sum + Number(r.amount || 0),
-    0
-  );
-
-  const invoicesPaid = paidRows.length;
-
-  const avgValue = totalRecovered / invoicesPaid;
-
-  const largest = Math.max(
-    ...paidRows.map(r => Number(r.amount || 0))
-  );
-
-  const lastPayment = paidRows
-    .map(r => r.paid_date)
-    .sort()
-    .at(-1);
-
-  setRecoveryStats({
-    totalRecovered,
-    invoicesPaid,
-    avgValue,
-    largest,
-    lastPayment
-  });
-}
 
       if (err) throw err;
       setData(transformDebtors(rows));
@@ -909,45 +872,6 @@ if (paidRows && paidRows.length > 0) {
             <EightWeekPlan />
           </GlassCard>
         </div>
-
-        {recoveryStats && (
-  <div className="grid grid-cols-5 gap-4 mb-4">
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Recovered</div>
-      <div className="text-xl font-bold">
-        €{recoveryStats.totalRecovered.toLocaleString("nl-NL")}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Invoices Paid</div>
-      <div className="text-xl font-bold">
-        {recoveryStats.invoicesPaid}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Average Value</div>
-      <div className="text-xl font-bold">
-        €{Math.round(recoveryStats.avgValue).toLocaleString("nl-NL")}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Largest Payment</div>
-      <div className="text-xl font-bold">
-        €{recoveryStats.largest.toLocaleString("nl-NL")}
-      </div>
-    </GlassCard>
-
-    <GlassCard className="p-4">
-      <div className="text-xs text-slate-500">Last Payment</div>
-      <div className="text-sm font-bold">
-        {recoveryStats.lastPayment}
-      </div>
-    </GlassCard>
-  </div>
-)}
 
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between text-[10px] text-slate-400">
