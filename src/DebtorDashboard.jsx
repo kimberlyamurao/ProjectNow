@@ -740,11 +740,29 @@ export default function DebtorDashboard() {
   }, []);
 
   useEffect(() => {
-    fetchDebtors();
-    const channel = supabase
-      .channel("debtors-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "debtors" }, () => {
+  fetchDebtors();
+  fetchPaidInvoices();
+
+  const channel = supabase
+    .channel("debtors-live")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "debtors"
+      },
+      () => {
         fetchDebtors();
+      }
+    )
+    .subscribe(status => setIsLive(status === "SUBSCRIBED"));
+
+  return () => {
+    supabase.removeChannel(channel);
+    setIsLive(false);
+  };
+}, [fetchDebtors, fetchPaidInvoices]);
       })
       .subscribe(status => setIsLive(status === "SUBSCRIBED"));
     return () => { supabase.removeChannel(channel); setIsLive(false); };
