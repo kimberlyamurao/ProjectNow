@@ -777,11 +777,7 @@ export default function DebtorDashboard() {
     setIsLive(false);
   };
 }, [fetchDebtors, fetchPaidInvoices]);
-      })
-      .subscribe(status => setIsLive(status === "SUBSCRIBED"));
-    return () => { supabase.removeChannel(channel); setIsLive(false); };
-  }, [fetchDebtors]);
-
+    
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
