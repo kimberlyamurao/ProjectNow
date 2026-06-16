@@ -739,6 +739,20 @@ export default function DebtorDashboard() {
     }
   }, []);
 
+  const fetchPaidInvoices = useCallback(async () => {
+  try {
+    const { data: rows, error } = await supabase
+      .from("paid_invoices")
+      .select("*");
+
+    if (error) throw error;
+
+    setPaidOverview(transformPaidInvoices(rows));
+  } catch (err) {
+    console.error("Paid invoices error:", err);
+  }
+}, []);
+
   useEffect(() => {
   fetchDebtors();
   fetchPaidInvoices();
